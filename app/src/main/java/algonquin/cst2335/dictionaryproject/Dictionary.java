@@ -1,32 +1,34 @@
 package algonquin.cst2335.dictionaryproject;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.Toolbar;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import android.content.ContentValues;
+import android.content.Context;
 import android.content.SharedPreferences;
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.Menu;
+import android.view.MenuInflater;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.android.volley.AuthFailureError;
 import com.android.volley.Request;
 import com.android.volley.RequestQueue;
-import com.android.volley.Response;
-import com.android.volley.VolleyError;
-import com.android.volley.toolbox.JsonObjectRequest;
 import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
 import com.google.gson.Gson;
 
-import org.json.JSONObject;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.logging.Logger;
 
 public class Dictionary extends AppCompatActivity {
 
@@ -40,20 +42,38 @@ public class Dictionary extends AppCompatActivity {
     MyAdapter theAdapter;
     SharedPreferences sharedPreferences;
     RequestQueue queue;
+    MyOpenHelper myOpenHelper;
+    Toolbar myToolbar;
 
 
     static String AuthorizationToken = "7127899793ddbda166156411c9dd231cd8066bf3";
 
 
     @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+             MenuInflater inflater = getMenuInflater();
+             inflater.inflate(R.menu.main_activity_actions,menu);
+        return super.onCreateOptionsMenu(menu);
+    }
+
+    @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_dictionary);
 
+
+
+        myOpenHelper = new MyOpenHelper(this);
+
+        final SQLiteDatabase TheDataBase = myOpenHelper.getWritableDatabase();
+
+        myToolbar = findViewById(R.id.toolbar);
         search = findViewById(R.id.search_button);
         rView = findViewById(R.id.recycler_meanings);
         SearchText = findViewById(R.id.search_Text);
         SearchedWord = findViewById(R.id.searched_word);
+
+        setSupportActionBar(myToolbar);
 
         sharedPreferences = getSharedPreferences("Shared_pref", MODE_PRIVATE);
 
@@ -80,10 +100,17 @@ public class Dictionary extends AppCompatActivity {
 
             fetchWordDefinitions(WhatWasTyped);
 
+            ContentValues newRow = new ContentValues();
+            newRow.put(MyOpenHelper.COL_DEFINITION, WhatWasTyped);
+            newRow.put(MyOpenHelper.COL_WORD, WhatWasSearched);
+
+            TheDataBase.insert(MyOpenHelper.TABLE_NAME, null, newRow);
+
         });
 
 
         populateRecycler("Word");
+
 
     }
 
@@ -112,6 +139,7 @@ public class Dictionary extends AppCompatActivity {
                     MyDictionaryArrayList.clear();
                     for (OWLBotDictionary definition : apiResponse.definitions) {
                         MyDictionary dictionary = new MyDictionary(definition.type, definition.definition);
+
                         MyDictionaryArrayList.add(dictionary);
                     }
                     theAdapter.notifyDataSetChanged();
@@ -131,29 +159,134 @@ public class Dictionary extends AppCompatActivity {
 
     }
 
-    public class MyDictionary {
-        String words;
-        String definition;
+    public static class MyDictionary {
+        public String word;
+        public String definition;
+        public String pronunciation;
+        public String type;
+        public boolean isSaved;
 
-        public MyDictionary(String words, String definition) {
-            this.words = words;
+        static MyOpenHelper helperInstance;
+
+        public MyDictionary(String word, String definition) {
+            this.word = word;
             this.definition = definition;
+        }
+
+        static void initializeHelper(Context context) {
+            if (helperInstance == null) {
+                helperInstance = new MyOpenHelper(context);
+//                final SQLiteDatabase TheDataBase = helperInstance.getWritableDatabase();
+            }
+        }
+
+        static SQLiteDatabase getDbInstance(Context context) {
+            initializeHelper(context);
+            return helperInstance.getWritableDatabase();
+        }
+
+
+        public void saveAsFavorite(Context context) {
+            ContentValues newRow = new ContentValues();
+            newRow.put(MyOpenHelper.COL_DEFINITION, definition);
+            newRow.put(MyOpenHelper.COL_WORD, word);
+
+            long newRowId = getDbInstance(context).insert(MyOpenHelper.TABLE_NAME, null, newRow);
+            Log("New word saved as Id: " + newRowId);
+            isSaved = true;
+        }
+
+        static void Log(String message) {
+            Log.d("MyDictionaryHelper", message);
+        }
+
+        public void removeFavorite(Context context) {
+            String selection = MyOpenHelper.COL_WORD + " = ?";
+            String[] selectionArgs = {word};
+
+            int deleted = getDbInstance(context).delete(MyOpenHelper.TABLE_NAME, selection, selectionArgs);
+            Log("Words deleted: " + deleted);
+            isSaved = false;
+        }
+
+        public void checkIsFavorite(Context context) {
+            initializeHelper(context);
+
+            String[] projection = {
+                    MyOpenHelper.COL_ID,
+                    MyOpenHelper.COL_DEFINITION,
+                    MyOpenHelper.COL_WORD
+            };
+            String selection = MyOpenHelper.COL_WORD + " = ?";
+            String[] selectionArgs = {word};
+
+            String sortOrder = MyOpenHelper.COL_WORD + " ASC";
+
+            Cursor cursor = getDbInstance(context).query(
+                    MyOpenHelper.TABLE_NAME,   // The table to query
+                    projection,             // The array of columns to return (pass null to get all)
+                    selection,              // The columns for the WHERE clause
+                    selectionArgs,          // The values for the WHERE clause
+                    null,                   // don't group the rows
+                    null,                   // don't filter by row groups
+                    sortOrder               // The sort order
+            );
+            isSaved = cursor.moveToNext();
+            cursor.close();
+
+        }
+
+        public static ArrayList<MyDictionary> getAllSavedWords(Context context) {
+            ArrayList<MyDictionary> dictionaries = new ArrayList<>();
+
+            String[] projection = {
+                    MyOpenHelper.COL_ID,
+                    MyOpenHelper.COL_DEFINITION,
+                    MyOpenHelper.COL_WORD
+            };
+            String selection = "";
+            String[] selectionArgs = {};
+
+            String sortOrder = MyOpenHelper.COL_WORD + " ASC";
+
+            Cursor cursor = getDbInstance(context).query(
+                    MyOpenHelper.TABLE_NAME,   // The table to query
+                    projection,             // The array of columns to return (pass null to get all)
+                    selection,              // The columns for the WHERE clause
+                    selectionArgs,          // The values for the WHERE clause
+                    null,                   // don't group the rows
+                    null,                   // don't filter by row groups
+                    sortOrder               // The sort order
+            );
+
+
+            while (cursor.moveToNext()) {
+                String word = cursor.getString(cursor.getColumnIndexOrThrow(MyOpenHelper.COL_WORD));
+                String definition = cursor.getString(cursor.getColumnIndexOrThrow(MyOpenHelper.COL_DEFINITION));
+
+                MyDictionary dictionary = new MyDictionary(word, definition);
+                dictionaries.add(dictionary);
+            }
+            cursor.close();
+
+
+            return dictionaries;
         }
     }
 
 
-    class OWLBotDictionary {
-        String type;
-        String definition;
-        String example;
-        String image_url;
-        String emoji;
+    public static class OWLBotDictionary {
+        public String type;
+        public String definition;
+        public String example;
+        public String image_url;
+        public String emoji;
     }
 
-    class APIResponse {
-        ArrayList<OWLBotDictionary> definitions;
-        String word;
-        String pronunciation;
+    public static class APIResponse {
+        public ArrayList<OWLBotDictionary> definitions;
+        public String word;
+        public String pronunciation;
     }
 
 

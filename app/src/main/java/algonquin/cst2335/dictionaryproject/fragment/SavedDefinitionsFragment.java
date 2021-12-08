@@ -1,13 +1,23 @@
 package algonquin.cst2335.dictionaryproject.fragment;
 
+import static android.content.Context.MODE_PRIVATE;
+
 import android.os.Bundle;
 
 import androidx.fragment.app.Fragment;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Toast;
 
+import java.util.ArrayList;
+
+import algonquin.cst2335.dictionaryproject.Dictionary;
+import algonquin.cst2335.dictionaryproject.MainActivity;
+import algonquin.cst2335.dictionaryproject.MyAdapter;
 import algonquin.cst2335.dictionaryproject.R;
 
 /**
@@ -26,19 +36,17 @@ public class SavedDefinitionsFragment extends Fragment {
     private String mParam1;
     private String mParam2;
 
+
+    RecyclerView rView;
+    MyAdapter theAdapter;
+    ArrayList<Dictionary.MyDictionary> MyDictionaryArrayList = new ArrayList<>();
+
+
     public SavedDefinitionsFragment() {
         // Required empty public constructor
     }
 
-    /**
-     * Use this factory method to create a new instance of
-     * this fragment using the provided parameters.
-     *
-     * @param param1 Parameter 1.
-     * @param param2 Parameter 2.
-     * @return A new instance of fragment SavedDefinitionsFragment.
-     */
-    // TODO: Rename and change types and number of parameters
+
     public static SavedDefinitionsFragment newInstance() {
         SavedDefinitionsFragment fragment = new SavedDefinitionsFragment();
         Bundle args = new Bundle();
@@ -63,4 +71,32 @@ public class SavedDefinitionsFragment extends Fragment {
         // Inflate the layout for this fragment
         return inflater.inflate(R.layout.fragment_saved_definitions, container, false);
     }
+
+    public void onViewCreated(View view, Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+
+        rView = view.findViewById(R.id.recycler_meanings);
+
+        rView.setLayoutManager(new LinearLayoutManager(getActivity()));
+
+        theAdapter = new MyAdapter(getActivity(), MyDictionaryArrayList);
+        theAdapter.setClickListener(position -> {
+            Toast.makeText(getActivity(), position + " position clicked", Toast.LENGTH_SHORT).show();
+            Dictionary.MyDictionary dictionary = MyDictionaryArrayList.get(position);
+            MainActivity.loadFullDefinition(dictionary);
+        });
+        rView.setAdapter(theAdapter);
+        rView.setLayoutManager(new LinearLayoutManager(getActivity()));
+
+
+        loadSavedDefinitions();
+    }
+
+    void loadSavedDefinitions() {
+        MyDictionaryArrayList.clear();
+        MyDictionaryArrayList.addAll(Dictionary.MyDictionary.getAllSavedWords(getContext()));
+        theAdapter.notifyDataSetChanged();
+    }
+
+
 }
